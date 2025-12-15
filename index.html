@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Bolts Arcade</title>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #0b0b10;
+      color: #ffffff;
+    }
+    .wrap {
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    h1 { margin-top: 0; }
+    .hud {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 10px;
+      font-weight: 600;
+    }
+    button {
+      padding: 10px 16px;
+      border-radius: 12px;
+      border: none;
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .start { background: #ffffff; color: #0b0b10; }
+    .reset { background: #2a2a44; color: #ffffff; }
+
+    canvas {
+      width: 100%;
+      border-radius: 16px;
+      border: 1px solid #2a2a44;
+      background: #0f0f1a;
+      display: block;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <h1>⚡ Bolts Arcade</h1>
+    <p>Tap the bright circles to charge Bolt. Avoid glitches.</p>
+
+    <div class="hud">
+      <div>Score: <span id="score">0</span></div>
+      <div>Time: <span id="time">30</span>s</div>
+      <div>
+        <button class="start" id="start">Start</button>
+        <button class="reset" id="reset">Reset</button>
+      </div>
+    </div>
+
+    <canvas id="game" width="720" height="420"></canvas>
+  </div>
+
+<script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+const scoreEl = document.getElementById("score");
+const timeEl = document.getElementById("time");
+
+let score = 0;
+let time = 30;
+let running = false;
+
+const good = [];
+const bad = [];
+
+function rand(min, max) {
+  return Math.random() * (max - min) + min;
+}
+
+function spawn(list, type) {
+  list.push({
+    x: rand(40, canvas.width - 40),
+    y: rand(40, canvas.height - 40),
+    r: rand(18, 32),
+    vx: rand(-80, 80),
+    vy: rand(-80, 80),
+    type
+  });
+}
+
+function reset() {
+  score = 0;
+  time = 30;
+  running = false;
+  good.length = 0;
+  bad.length = 0;
+
+  for (let i = 0; i < 4; i++) spawn(good, "good");
+  for (let i = 0; i < 2; i++) spawn(bad, "bad");
+
+  scoreEl.textContent = score;
+  timeEl.textContent = time;
+  draw();
+}
+
+function start() {
+  if (running) return;
+  running = true;
+  last = performance.now();
+  requestAnimationFrame(loop);
+}
+
+let last = 0;
+function loop(t) {
+  if (!running) return;
+  const dt = (t - last) / 1000;
+  last = t;
+
+  time -= dt;
+  timeEl.textContent = Math.max(0, Math.ceil(time));
+
+  update(dt);
+  draw();
+
+  if (time <= 0) running = false;
+  else requestAnimationFrame(loop);
+}
+
+function update(dt) {
+  [...good, ...bad].forEach(o => {
+    o.x += o.vx * dt;
+    o.y += o.vy * dt;
+    if (o.x < o.r || o.x > canvas.width - o.r) o.vx *= -1;
+    if (o.y < o.r || o.y > canvas.height - o.r) o.vy *= -1;
+  });
+}
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  good.forEach(o => drawCircle(o, "#ffffff"));
+  bad.forEach(o => drawCircle(o, "#9999ff", false));
+}
+
+function drawCircle(o, color, filled = true) {
+  ctx.beginPath();
+  ctx.arc(o.x, o.y, o.r, 0, Math.PI * 2);
+  if (filled) {
+    ctx.fillStyle = color;
+    ctx.fill();
+  } else {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+}
+
+canvas.addEventListener("click", e => handleTap(e.clientX, e.clientY));
+canvas.addEventListener("touchstart", e => {
+  e.preventDefault();
+  handleTap(e.touches[0].clientX, e.touches[0].clientY);
+});
+
+function handleTap(cx, cy) {
+  if (!running) return;
+  const rect = canvas.getBoundingClientRect();
+  const x = (cx - rect.left) * (canvas.width / rect.width);
+  const y = (cy - rect.top) * (canvas.height / rect.height);
+
+  for (const b of bad) {
+    if (hit(x, y, b)) {
+      score = Math.max(0, score - 2);
+      scoreEl.textContent = score;
+      return;
+    }
+  }
+  for (const g of good) {
+    if (hit(x, y, g)) {
+      score++;
+      scoreEl.textContent = score;
+      g.x = rand(40, canvas.width - 40);
+      g.y = rand(40, canvas.height - 40);
+      return;
+    }
+  }
+}
+
+function hit(x, y, o) {
+  const dx = x - o.x;
+  const dy = y - o.y;
+  return dx * dx + dy * dy < o.r * o.r;
+}
+
+document.getElementById("start").onclick = start;
+document.getElementById("reset").onclick = reset;
+
+reset();
+</script>
+</body>
+</html>
