@@ -1,604 +1,184 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Bolts Arcade: Sector 37</title>
+  <meta charset="UTF-8" />
+  <title>Flappy Bolt – Sector 37</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+
   <style>
-    :root{
-      --bg:#0b0b10;
-      --panel:#141423;
-      --stroke:#2a2a44;
-      --ink:#ffffff;
+    body {
+      margin: 0;
+      background: radial-gradient(circle at top, #2b2e3b, #0f1118);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      font-family: system-ui, sans-serif;
+      color: #fff;
     }
-    body{ margin:0; font-family: system-ui, Arial, sans-serif; background:var(--bg); color:var(--ink); }
-    .wrap{ max-width: 980px; margin: 0 auto; padding: 16px; }
-    .topbar{
-      display:flex; gap:10px; flex-wrap:wrap; align-items:center; justify-content:space-between;
-      margin-bottom: 10px;
+
+    canvas {
+      background: linear-gradient(#3a3f5c, #151722);
+      border-radius: 12px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5);
     }
-    .group{ display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-    .chip{
-      background:var(--panel);
-      border:1px solid var(--stroke);
-      border-radius:999px;
-      padding:8px 12px;
-      font-weight: 800;
+
+    #overlay {
+      position: absolute;
+      text-align: center;
+      pointer-events: none;
     }
-    .selectWrap{
-      display:flex; gap:10px; align-items:center;
-      background:var(--panel);
-      border:1px solid var(--stroke);
-      border-radius:14px;
-      padding:8px 10px;
+
+    h1 {
+      margin-bottom: 6px;
+      font-size: 22px;
     }
-    .label{ opacity:.9; font-weight:900; }
-    select{
-      background:transparent;
-      color:var(--ink);
-      border:0;
-      font-weight:900;
+
+    p {
+      opacity: 0.8;
+      margin: 0;
       font-size: 14px;
-      outline:none;
-      cursor:pointer;
     }
-    button{
-      cursor:pointer; border:0; border-radius:12px; padding:10px 14px; font-weight:900;
-    }
-    .btn{ background:#ffffff; color:#0b0b10; }
-    .btn2{ background:#2a2a44; color:#ffffff; }
-    canvas{
-      width:100%;
-      height:auto;
-      background:#0f0f1a;
-      border-radius:16px;
-      border:1px solid var(--stroke);
-      display:block;
-      touch-action: manipulation;
-    }
-    .hint{ opacity:.85; font-size: 14px; margin:10px 2px 0 2px; line-height: 1.35; }
-    .mini{ opacity:.75; font-size: 12px; }
   </style>
 </head>
 
 <body>
-  <div class="wrap">
-    <div class="topbar">
-      <div class="group">
-        <div class="chip">Score: <span id="score">0</span></div>
-        <div class="chip">Best: <span id="best">0</span></div>
-      </div>
-
-      <div class="group">
-        <div class="selectWrap">
-          <span class="label">Emotion</span>
-          <select id="emotionSelect" aria-label="Choose emotion">
-            <option value="0">Calm</option>
-            <option value="1">Brave</option>
-            <option value="2">Nervous</option>
-            <option value="3">Overwhelmed</option>
-          </select>
-        </div>
-        <button class="btn" id="start">Start</button>
-        <button class="btn2" id="restart">Restart</button>
-      </div>
-    </div>
-
-    <canvas id="c" width="980" height="540"></canvas>
-
-    <div class="hint">
-      Tap, click, or press Space to boost.
-      <span class="mini">Kind mode: bigger gaps, gentle ramp, forgiving hitbox.</span>
-    </div>
+  <div id="overlay">
+    <h1>Tap or Space to Help Bolt</h1>
+    <p>Sector 37 • Gentle Mode</p>
   </div>
 
-<script>
-(() => {
-  const canvas = document.getElementById("c");
-  const ctx = canvas.getContext("2d");
+  <canvas id="game" width="360" height="640"></canvas>
 
-  const scoreEl = document.getElementById("score");
-  const bestEl  = document.getElementById("best");
-  const startBtn = document.getElementById("start");
-  const restartBtn = document.getElementById("restart");
-  const emotionSelect = document.getElementById("emotionSelect");
+  <script>
+    const canvas = document.getElementById("game");
+    const ctx = canvas.getContext("2d");
 
-  // --- ART SWAP ---
-  // IMPORTANT: file name is case-sensitive on GitHub Pages.
-  // Your repo file should be exactly: Bolt.png
-  const boltImg = new Image();
-  boltImg.src = "Bolt.png";
-  boltImg.onerror = () => console.error("Bolt image failed to load. Check filename/case: Bolt.png");
+    // --- GAME STATE ---
+    let running = false;
+    let gravity = 0.35;
+    let jump = -6;
+    let speed = 2;
+    let score = 0;
 
-  // --- EMOTION MODE (kind defaults) ---
-  const emotions = [
-    {
-      name: "Calm",
-      gravity: 1500,
-      flapV: -520,
-      gap: 210,
-      speed: 240,
-      message: "Bolt says: Going slow is okay."
-    },
-    {
-      name: "Brave",
-      gravity: 1600,
-      flapV: -540,
-      gap: 195,
-      speed: 250,
-      message: "Bolt says: You tried. That matters."
-    },
-    {
-      name: "Nervous",
-      gravity: 1700,
-      flapV: -560,
-      gap: 185,
-      speed: 255,
-      message: "Bolt says: Breathe. Keep the rhythm."
-    },
-    {
-      name: "Overwhelmed",
-      gravity: 1750,
-      flapV: -570,
-      gap: 175,
-      speed: 255,
-      message: "Bolt says: One thing at a time."
-    }
-  ];
+    // --- BOLT ---
+    const boltImg = new Image();
+    boltImg.src = "TransBack.png";
 
-  let currentEmotion = emotions[0];
-  emotionSelect.onchange = (e) => {
-    currentEmotion = emotions[Number(e.target.value)];
-    if (!running) draw();
-  };
+    const bolt = {
+      x: 90,
+      y: canvas.height / 2,
+      w: 48,
+      h: 48,
+      vy: 0
+    };
 
-  // --- KIND DIFFICULTY + SECTOR SETTINGS ---
-  const FLOOR_H = 74;
-  const GATE_WIDTH = 92;
-  const GATE_SPACING = 290;
-  const GAP_EASY_BONUS = 22;
+    // --- OBSTACLES ---
+    const pipes = [];
+    const gap = 160;
+    const pipeWidth = 48;
 
-  const RAMP_START_SCORE = 4;
-  const SPEED_RAMP_PER_POINT = 2.0;
-  const GAP_SHRINK_PER_POINT = 0.8;
-  const MAX_SPEED_BONUS = 28;
-
-  // Forgiveness
-  const HITBOX_SCALE = 0.74;
-  const START_GRACE_MS = 900;
-  const FLAP_GRACE_MS = 120;
-
-  // Sprite draw size (tune if you want bigger/smaller Bolt)
-  const boltDrawW = 96;
-  const boltDrawH = 128;
-
-  // State
-  let running = false;
-  let gameOver = false;
-  let score = 0;
-  let best = Number(localStorage.getItem("bolt_best") || 0);
-  bestEl.textContent = best;
-
-  const bolt = {
-    x: 240,
-    y: canvas.height * 0.45,
-    vy: 0,
-    lastFlapAt: 0
-  };
-
-  let gates = [];
-  let lastTs = 0;
-  let startedAt = 0;
-
-  // Atmosphere particles
-  const rain = [];
-  const RAIN_COUNT = 120;
-
-  function initRain(){
-    rain.length = 0;
-    for (let i=0;i<RAIN_COUNT;i++){
-      rain.push({
-        x: Math.random()*canvas.width,
-        y: Math.random()*canvas.height,
-        s: 480 + Math.random()*520,
-        l: 10 + Math.random()*16
+    function spawnPipe() {
+      const topHeight = 80 + Math.random() * 200;
+      pipes.push({
+        x: canvas.width,
+        top: topHeight,
+        bottom: canvas.height - (topHeight + gap),
+        passed: false
       });
     }
-  }
 
-  function reset() {
-    running = false;
-    gameOver = false;
-    score = 0;
-    scoreEl.textContent = score;
-
-    bolt.y = canvas.height * 0.45;
-    bolt.vy = 0;
-    bolt.lastFlapAt = 0;
-
-    gates = [];
-    const startX = canvas.width + 160;
-    for (let i=0;i<4;i++){
-      gates.push(makeGate(startX + i * GATE_SPACING, i));
+    // --- INPUT ---
+    function flap() {
+      if (!running) {
+        start();
+      }
+      bolt.vy = jump;
     }
 
-    initRain();
-    draw();
-  }
+    document.addEventListener("keydown", e => {
+      if (e.code === "Space") flap();
+    });
 
-  function makeGate(x, index) {
-    const baseGap = currentEmotion.gap + (index < 2 ? GAP_EASY_BONUS : 0);
+    canvas.addEventListener("click", flap);
+    canvas.addEventListener("touchstart", flap);
 
-    const topMin = 92;
-    const topMax = canvas.height - FLOOR_H - 92;
-    const gapCenter = rand(topMin + baseGap/2, topMax - baseGap/2);
-
-    return {
-      x,
-      gapTop: gapCenter - baseGap/2,
-      gapBot: gapCenter + baseGap/2,
-      passed: false
-    };
-  }
-
-  function start() {
-    if (running) return;
-    running = true;
-    gameOver = false;
-    lastTs = performance.now();
-    startedAt = performance.now();
-    requestAnimationFrame(loop);
-  }
-
-  function end() {
-    running = false;
-    gameOver = true;
-
-    if (score > best) {
-      best = score;
-      localStorage.setItem("bolt_best", String(best));
-      bestEl.textContent = best;
-    }
-    draw();
-  }
-
-  function flap() {
-    const now = performance.now();
-    if (!running && !gameOver) start();
-    if (gameOver) return;
-    bolt.vy = currentEmotion.flapV;
-    bolt.lastFlapAt = now;
-  }
-
-  function loop(ts) {
-    if (!running) return;
-    const dt = Math.min(0.033, (ts - lastTs) / 1000);
-    lastTs = ts;
-
-    update(dt);
-    draw();
-
-    if (running) requestAnimationFrame(loop);
-  }
-
-  function update(dt) {
-    // Gentle difficulty ramp
-    const rampScore = Math.max(0, score - RAMP_START_SCORE);
-    const speedBonus = Math.min(MAX_SPEED_BONUS, rampScore * SPEED_RAMP_PER_POINT);
-    const gapShrink  = Math.min(28, rampScore * GAP_SHRINK_PER_POINT);
-
-    const gateSpeed = currentEmotion.speed + speedBonus;
-
-    // Bolt physics
-    bolt.vy += currentEmotion.gravity * dt;
-    bolt.y += bolt.vy * dt;
-
-    // Rain motion
-    for (const r of rain){
-      r.x -= (gateSpeed * 0.25) * dt;
-      r.y += r.s * dt;
-      if (r.y > canvas.height) { r.y = -r.l; r.x = Math.random()*canvas.width; }
-      if (r.x < -20) r.x = canvas.width + 20;
-    }
-
-    // Bounds
-    const floorY = canvas.height - FLOOR_H;
-    if (bolt.y + boltDrawH/2 > floorY) {
-      bolt.y = floorY - boltDrawH/2;
-      end();
-      return;
-    }
-    if (bolt.y - boltDrawH/2 < 0) {
-      bolt.y = boltDrawH/2;
+    // --- GAME LOOP ---
+    function start() {
+      running = true;
+      pipes.length = 0;
+      score = 0;
+      bolt.y = canvas.height / 2;
       bolt.vy = 0;
+      spawnPipe();
     }
 
-    // Move gates & collisions
-    for (const g of gates) {
-      g.x -= gateSpeed * dt;
+    function update() {
+      if (!running) return;
 
-      // scoring
-      if (!g.passed && g.x + GATE_WIDTH < bolt.x) {
-        g.passed = true;
-        score += 1;
-        scoreEl.textContent = score;
+      bolt.vy += gravity;
+      bolt.y += bolt.vy;
+
+      // spawn pipes gently
+      if (pipes.length === 0 || pipes[pipes.length - 1].x < canvas.width - 220) {
+        spawnPipe();
       }
 
-      // Effective gap for collision (very gentle)
-      const effectiveTop = g.gapTop + gapShrink/2;
-      const effectiveBot = g.gapBot - gapShrink/2;
+      for (let p of pipes) {
+        p.x -= speed;
 
-      const now = performance.now();
-      const inStartGrace = (now - startedAt) < START_GRACE_MS;
-      const inFlapGrace  = (now - bolt.lastFlapAt) < FLAP_GRACE_MS;
+        if (!p.passed && p.x + pipeWidth < bolt.x) {
+          score++;
+          p.passed = true;
+        }
 
-      if (!inStartGrace && !inFlapGrace && collidesWithGate(effectiveTop, effectiveBot, g.x)) {
-        end();
-        return;
+        // collision (forgiving)
+        if (
+          bolt.x + bolt.w > p.x &&
+          bolt.x < p.x + pipeWidth &&
+          (bolt.y < p.top || bolt.y + bolt.h > canvas.height - p.bottom)
+        ) {
+          running = false;
+        }
+      }
+
+      // bounds
+      if (bolt.y < -40 || bolt.y > canvas.height) {
+        running = false;
+      }
+
+      // cleanup
+      while (pipes.length && pipes[0].x + pipeWidth < 0) {
+        pipes.shift();
       }
     }
 
-    // recycle gates
-    const first = gates[0];
-    if (first.x + GATE_WIDTH < -60) {
-      gates.shift();
-      const last = gates[gates.length - 1];
-      gates.push(makeGate(last.x + GATE_SPACING, 3));
-    }
-  }
+    function draw() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-  function collidesWithGate(gapTop, gapBot, gateX) {
-    const hbW = boltDrawW * HITBOX_SCALE;
-    const hbH = boltDrawH * HITBOX_SCALE;
+      // pipes
+      ctx.fillStyle = "#8aa1ff";
+      for (let p of pipes) {
+        ctx.fillRect(p.x, 0, pipeWidth, p.top);
+        ctx.fillRect(p.x, canvas.height - p.bottom, pipeWidth, p.bottom);
+      }
 
-    const bx1 = bolt.x - hbW/2;
-    const bx2 = bolt.x + hbW/2;
-    const by1 = bolt.y - hbH/2;
-    const by2 = bolt.y + hbH/2;
+      // bolt (faces right naturally)
+      ctx.drawImage(boltImg, bolt.x, bolt.y, bolt.w, bolt.h);
 
-    const gx1 = gateX;
-    const gx2 = gateX + GATE_WIDTH;
-
-    if (bx2 < gx1 || bx1 > gx2) return false;
-    if (by1 < gapTop || by2 > gapBot) return true;
-    return false;
-  }
-
-  // --- DRAWING ---
-  function draw() {
-    ctx.clearRect(0,0,canvas.width,canvas.height);
-
-    drawSky();
-    drawParallaxRuins();
-    drawLightningOccasionally();
-    drawRain();
-    drawFloor();
-
-    for (const g of gates) drawGate(g);
-
-    drawBolt(bolt.x, bolt.y);
-
-    if (!running && !gameOver) {
-      overlay(
-        "Sector 37-QS",
-        `Emotion: ${currentEmotion.name}\n${currentEmotion.message}\n\nTap, click, or Space to boost.`
-      );
+      // score
+      ctx.fillStyle = "#fff";
+      ctx.font = "18px system-ui";
+      ctx.fillText("Score: " + score, 12, 26);
     }
 
-    if (gameOver) {
-      overlay(
-        "Glitch!",
-        `Score: ${score}\nEmotion: ${currentEmotion.name}\n${currentEmotion.message}\n\nHit Restart to try again.`
-      );
-    }
-  }
-
-  function drawSky() {
-    const g = ctx.createLinearGradient(0,0,0,canvas.height);
-    g.addColorStop(0, "#0b0b10");
-    g.addColorStop(0.55, "#101022");
-    g.addColorStop(1, "#0b0b10");
-    ctx.fillStyle = g;
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-
-    // subtle grid
-    ctx.save();
-    ctx.globalAlpha = 0.07;
-    ctx.strokeStyle = "#ffffff";
-    for (let x=0;x<canvas.width;x+=40){
-      ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,canvas.height); ctx.stroke();
-    }
-    for (let y=0;y<canvas.height;y+=40){
-      ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(canvas.width,y); ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawParallaxRuins() {
-    const t = performance.now() * 0.001;
-    drawRuinLayer(0.10, 14, 160, t);
-    drawRuinLayer(0.18, 34, 220, t + 10);
-  }
-
-  function drawRuinLayer(alpha, speed, baseY, seedT) {
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.fillStyle = "#ffffff";
-
-    const scroll = (seedT * speed) % 260;
-    let x = -scroll;
-
-    while (x < canvas.width + 260) {
-      const w = 80 + Math.floor(hash(x) * 120);
-      const h = 40 + Math.floor(hash(x+99) * 170);
-      const y = canvas.height - FLOOR_H - baseY + Math.floor(hash(x+199)*40);
-      ctx.fillRect(x, y, w, h);
-
-      // cutouts for broken-building vibe
-      ctx.clearRect(x + 10, y + 12, Math.max(8, w*0.25), Math.max(8, h*0.18));
-
-      x += w + 40;
+    function loop() {
+      update();
+      draw();
+      requestAnimationFrame(loop);
     }
 
-    ctx.restore();
-  }
-
-  function drawLightningOccasionally() {
-    if (!running) return;
-    if (Math.random() > 0.995) {
-      ctx.save();
-      ctx.globalAlpha = 0.08;
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.restore();
-    }
-  }
-
-  function drawRain() {
-    ctx.save();
-    ctx.globalAlpha = 0.18;
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-
-    for (const r of rain){
-      ctx.beginPath();
-      ctx.moveTo(r.x, r.y);
-      ctx.lineTo(r.x - 7, r.y + r.l);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
-
-  function drawFloor() {
-    ctx.save();
-    ctx.fillStyle = "#0b0b10";
-    ctx.fillRect(0, canvas.height - FLOOR_H, canvas.width, FLOOR_H);
-
-    ctx.globalAlpha = 0.35;
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(0, canvas.height - FLOOR_H);
-    ctx.lineTo(canvas.width, canvas.height - FLOOR_H);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawGate(g) {
-    drawRuinRect(g.x, 0, GATE_WIDTH, g.gapTop);
-    const floorY = canvas.height - FLOOR_H;
-    drawRuinRect(g.x, g.gapBot, GATE_WIDTH, floorY - g.gapBot);
-
-    // glitch shimmer on gap edges
-    ctx.save();
-    ctx.globalAlpha = 0.7;
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 3;
-
-    ctx.beginPath();
-    ctx.moveTo(g.x + 12, g.gapTop);
-    ctx.lineTo(g.x + GATE_WIDTH - 12, g.gapTop);
-    ctx.stroke();
-
-    ctx.beginPath();
-    ctx.moveTo(g.x + 12, g.gapBot);
-    ctx.lineTo(g.x + GATE_WIDTH - 12, g.gapBot);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  function drawRuinRect(x, y, w, h) {
-    ctx.save();
-    ctx.fillStyle = "#141423";
-    ctx.fillRect(x, y, w, h);
-
-    ctx.globalAlpha = 0.55;
-    ctx.strokeStyle = "#ffffff";
-    ctx.lineWidth = 2;
-    ctx.strokeRect(x, y, w, h);
-
-    // cracks
-    ctx.globalAlpha = 0.22;
-    ctx.beginPath();
-    for (let i=0;i<6;i++) {
-      const cx = x + rand(10, w-10);
-      const cy = y + rand(10, Math.max(12, h-10));
-      ctx.moveTo(cx, cy);
-      ctx.lineTo(cx + rand(-18,18), cy + rand(14,30));
-    }
-    ctx.stroke();
-
-    ctx.restore();
-  }
-
-  function drawBolt(x, y) {
-    ctx.save();
-    ctx.translate(x, y);
-
-    // subtle tilt from velocity
-    const tilt = Math.max(-0.25, Math.min(0.25, bolt.vy / 900));
-    ctx.rotate(tilt);
-
-    // ✅ ORIENTATION FIX:
-    // Your uploaded art faces left. Flip horizontally so Bolt faces right.
-    ctx.scale(-1, 1);
-
-    ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(boltImg, -boltDrawW/2, -boltDrawH/2, boltDrawW, boltDrawH);
-
-    ctx.restore();
-  }
-
-  function overlay(title, body) {
-    ctx.save();
-    ctx.fillStyle = "rgba(0,0,0,0.58)";
-    ctx.fillRect(0,0,canvas.width,canvas.height);
-
-    ctx.fillStyle = "#ffffff";
-    ctx.textAlign = "left";
-
-    ctx.font = "900 48px system-ui, Arial";
-    ctx.fillText(title, 44, 96);
-
-    ctx.font = "800 22px system-ui, Arial";
-    const lines = body.split("\n");
-    let y = 138;
-    for (const line of lines) {
-      ctx.fillText(line, 44, y);
-      y += 30;
-    }
-
-    ctx.font = "800 18px system-ui, Arial";
-    ctx.globalAlpha = 0.85;
-    ctx.fillText("Tip: Rhythm beats panic. Bolt likes rhythm.", 44, canvas.height - 44);
-
-    ctx.restore();
-  }
-
-  function rand(min, max) { return Math.random() * (max - min) + min; }
-  function hash(n) {
-    const s = Math.sin(n * 0.001 + 12.345) * 43758.5453;
-    return s - Math.floor(s);
-  }
-
-  // --- INPUT ---
-  function onPress(e) {
-    if (e.type === "keydown") {
-      if (e.code !== "Space") return;
-      e.preventDefault();
-    }
-    flap();
-  }
-
-  canvas.addEventListener("mousedown", onPress);
-  canvas.addEventListener("touchstart", (e) => { e.preventDefault(); flap(); }, { passive:false });
-  window.addEventListener("keydown", onPress);
-
-  startBtn.addEventListener("click", start);
-  restartBtn.addEventListener("click", () => { reset(); start(); });
-
-  reset();
-})();
-</script>
+    loop();
+  </script>
 </body>
 </html>
