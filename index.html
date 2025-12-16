@@ -23,9 +23,8 @@
       border:1px solid var(--stroke);
       border-radius:999px;
       padding:8px 12px;
-      font-weight: 700;
+      font-weight: 800;
     }
-    .label{ opacity:.9; font-weight:700; }
     .selectWrap{
       display:flex; gap:10px; align-items:center;
       background:var(--panel);
@@ -33,11 +32,12 @@
       border-radius:14px;
       padding:8px 10px;
     }
+    .label{ opacity:.9; font-weight:900; }
     select{
       background:transparent;
       color:var(--ink);
       border:0;
-      font-weight:800;
+      font-weight:900;
       font-size: 14px;
       outline:none;
       cursor:pointer;
@@ -54,6 +54,7 @@
       border-radius:16px;
       border:1px solid var(--stroke);
       display:block;
+      touch-action: manipulation;
     }
     .hint{ opacity:.85; font-size: 14px; margin:10px 2px 0 2px; line-height: 1.35; }
     .mini{ opacity:.75; font-size: 12px; }
@@ -86,8 +87,8 @@
     <canvas id="c" width="980" height="540"></canvas>
 
     <div class="hint">
-      Tap or click or press Space to boost.
-      <span class="mini">Kind mode: bigger gaps, gentle ramp, and a forgiving hitbox.</span>
+      Tap, click, or press Space to boost.
+      <span class="mini">Kind mode: bigger gaps, gentle ramp, forgiving hitbox.</span>
     </div>
   </div>
 
@@ -102,11 +103,14 @@
   const restartBtn = document.getElementById("restart");
   const emotionSelect = document.getElementById("emotionSelect");
 
-  // Art asset (must be in repo root)
+  // --- ART SWAP ---
+  // IMPORTANT: file name is case-sensitive on GitHub Pages.
+  // Your repo file should be exactly: Bolt.png
   const boltImg = new Image();
-  boltImg.src = "bolt.png";
+  boltImg.src = "Bolt.png";
+  boltImg.onerror = () => console.error("Bolt image failed to load. Check filename/case: Bolt.png");
 
-  // Emotion presets (kind by default)
+  // --- EMOTION MODE (kind defaults) ---
   const emotions = [
     {
       name: "Calm",
@@ -143,26 +147,30 @@
   ];
 
   let currentEmotion = emotions[0];
-
   emotionSelect.onchange = (e) => {
     currentEmotion = emotions[Number(e.target.value)];
-    if (!running) draw(); // update start overlay text
+    if (!running) draw();
   };
 
-  // Core tuning (Sector 37)
+  // --- KIND DIFFICULTY + SECTOR SETTINGS ---
   const FLOOR_H = 74;
   const GATE_WIDTH = 92;
-  const GATE_SPACING = 290;     // more breathing room
-  const GAP_EASY_BONUS = 22;    // first few gates are easier
-  const RAMP_START_SCORE = 4;   // ramp begins later
-  const SPEED_RAMP_PER_POINT = 2.0; // very gentle ramp
-  const GAP_SHRINK_PER_POINT = 0.8; // very gentle ramp
-  const MAX_SPEED_BONUS = 28;   // cap difficulty growth
+  const GATE_SPACING = 290;
+  const GAP_EASY_BONUS = 22;
 
-  // Forgiveness (makes it feel kind)
-  const HITBOX_SCALE = 0.74;    // smaller collision box than sprite
-  const START_GRACE_MS = 900;   // no collision for a brief moment after start
-  const FLAP_GRACE_MS = 120;    // tiny grace right after flap (feels fair)
+  const RAMP_START_SCORE = 4;
+  const SPEED_RAMP_PER_POINT = 2.0;
+  const GAP_SHRINK_PER_POINT = 0.8;
+  const MAX_SPEED_BONUS = 28;
+
+  // Forgiveness
+  const HITBOX_SCALE = 0.74;
+  const START_GRACE_MS = 900;
+  const FLAP_GRACE_MS = 120;
+
+  // Sprite draw size (tune if you want bigger/smaller Bolt)
+  const boltDrawW = 96;
+  const boltDrawH = 128;
 
   // State
   let running = false;
@@ -170,10 +178,6 @@
   let score = 0;
   let best = Number(localStorage.getItem("bolt_best") || 0);
   bestEl.textContent = best;
-
-  // Bolt sprite scale and hitbox
-  const boltDrawW = 96;
-  const boltDrawH = 128;
 
   const bolt = {
     x: 240,
@@ -210,6 +214,7 @@
 
     bolt.y = canvas.height * 0.45;
     bolt.vy = 0;
+    bolt.lastFlapAt = 0;
 
     gates = [];
     const startX = canvas.width + 160;
@@ -277,14 +282,14 @@
   }
 
   function update(dt) {
-    // Difficulty ramp (kind)
+    // Gentle difficulty ramp
     const rampScore = Math.max(0, score - RAMP_START_SCORE);
     const speedBonus = Math.min(MAX_SPEED_BONUS, rampScore * SPEED_RAMP_PER_POINT);
     const gapShrink  = Math.min(28, rampScore * GAP_SHRINK_PER_POINT);
 
     const gateSpeed = currentEmotion.speed + speedBonus;
 
-    // Physics
+    // Bolt physics
     bolt.vy += currentEmotion.gravity * dt;
     bolt.y += bolt.vy * dt;
 
@@ -308,23 +313,21 @@
       bolt.vy = 0;
     }
 
-    // Move gates
+    // Move gates & collisions
     for (const g of gates) {
       g.x -= gateSpeed * dt;
 
-      // Score
+      // scoring
       if (!g.passed && g.x + GATE_WIDTH < bolt.x) {
         g.passed = true;
         score += 1;
         scoreEl.textContent = score;
       }
 
-      // Recompute effective gap for ramp (we keep visuals stable, collision uses a slightly tighter ramp)
-      const effectiveGapShrink = gapShrink;
-      const effectiveTop = g.gapTop + effectiveGapShrink/2;
-      const effectiveBot = g.gapBot - effectiveGapShrink/2;
+      // Effective gap for collision (very gentle)
+      const effectiveTop = g.gapTop + gapShrink/2;
+      const effectiveBot = g.gapBot - gapShrink/2;
 
-      // Forgiveness windows
       const now = performance.now();
       const inStartGrace = (now - startedAt) < START_GRACE_MS;
       const inFlapGrace  = (now - bolt.lastFlapAt) < FLAP_GRACE_MS;
@@ -335,7 +338,7 @@
       }
     }
 
-    // Recycle
+    // recycle gates
     const first = gates[0];
     if (first.x + GATE_WIDTH < -60) {
       gates.shift();
@@ -361,7 +364,7 @@
     return false;
   }
 
-  // Drawing
+  // --- DRAWING ---
   function draw() {
     ctx.clearRect(0,0,canvas.width,canvas.height);
 
@@ -369,16 +372,12 @@
     drawParallaxRuins();
     drawLightningOccasionally();
     drawRain();
-
     drawFloor();
 
-    // Gates
     for (const g of gates) drawGate(g);
 
-    // Bolt
     drawBolt(bolt.x, bolt.y);
 
-    // Overlays
     if (!running && !gameOver) {
       overlay(
         "Sector 37-QS",
@@ -402,7 +401,7 @@
     ctx.fillStyle = g;
     ctx.fillRect(0,0,canvas.width,canvas.height);
 
-    // subtle grid lines (Sector vibe)
+    // subtle grid
     ctx.save();
     ctx.globalAlpha = 0.07;
     ctx.strokeStyle = "#ffffff";
@@ -416,13 +415,9 @@
   }
 
   function drawParallaxRuins() {
-    // Two layers: far and near
     const t = performance.now() * 0.001;
-    const farSpeed = 14;
-    const nearSpeed = 34;
-
-    drawRuinLayer(0.10, farSpeed, 160, t);
-    drawRuinLayer(0.18, nearSpeed, 220, t + 10);
+    drawRuinLayer(0.10, 14, 160, t);
+    drawRuinLayer(0.18, 34, 220, t + 10);
   }
 
   function drawRuinLayer(alpha, speed, baseY, seedT) {
@@ -439,7 +434,7 @@
       const y = canvas.height - FLOOR_H - baseY + Math.floor(hash(x+199)*40);
       ctx.fillRect(x, y, w, h);
 
-      // cutouts
+      // cutouts for broken-building vibe
       ctx.clearRect(x + 10, y + 12, Math.max(8, w*0.25), Math.max(8, h*0.18));
 
       x += w + 40;
@@ -449,10 +444,8 @@
   }
 
   function drawLightningOccasionally() {
-    // very occasional flash, gentle, not seizure-y
-    const r = Math.random();
     if (!running) return;
-    if (r > 0.995) {
+    if (Math.random() > 0.995) {
       ctx.save();
       ctx.globalAlpha = 0.08;
       ctx.fillStyle = "#ffffff";
@@ -492,16 +485,16 @@
   }
 
   function drawGate(g) {
-    // Gate slabs (ruins)
     drawRuinRect(g.x, 0, GATE_WIDTH, g.gapTop);
     const floorY = canvas.height - FLOOR_H;
     drawRuinRect(g.x, g.gapBot, GATE_WIDTH, floorY - g.gapBot);
 
-    // Glitch shimmer on edges
+    // glitch shimmer on gap edges
     ctx.save();
     ctx.globalAlpha = 0.7;
     ctx.strokeStyle = "#ffffff";
     ctx.lineWidth = 3;
+
     ctx.beginPath();
     ctx.moveTo(g.x + 12, g.gapTop);
     ctx.lineTo(g.x + GATE_WIDTH - 12, g.gapTop);
@@ -539,13 +532,16 @@
   }
 
   function drawBolt(x, y) {
-    // Umbrella Bolt art swap
     ctx.save();
     ctx.translate(x, y);
 
-    // subtle tilt from velocity (feels alive)
+    // subtle tilt from velocity
     const tilt = Math.max(-0.25, Math.min(0.25, bolt.vy / 900));
     ctx.rotate(tilt);
+
+    // ✅ ORIENTATION FIX:
+    // Your uploaded art faces left. Flip horizontally so Bolt faces right.
+    ctx.scale(-1, 1);
 
     ctx.imageSmoothingEnabled = true;
     ctx.drawImage(boltImg, -boltDrawW/2, -boltDrawH/2, boltDrawW, boltDrawH);
@@ -564,7 +560,7 @@
     ctx.font = "900 48px system-ui, Arial";
     ctx.fillText(title, 44, 96);
 
-    ctx.font = "700 22px system-ui, Arial";
+    ctx.font = "800 22px system-ui, Arial";
     const lines = body.split("\n");
     let y = 138;
     for (const line of lines) {
@@ -572,7 +568,7 @@
       y += 30;
     }
 
-    ctx.font = "700 18px system-ui, Arial";
+    ctx.font = "800 18px system-ui, Arial";
     ctx.globalAlpha = 0.85;
     ctx.fillText("Tip: Rhythm beats panic. Bolt likes rhythm.", 44, canvas.height - 44);
 
@@ -581,12 +577,11 @@
 
   function rand(min, max) { return Math.random() * (max - min) + min; }
   function hash(n) {
-    // deterministic-ish noise from x
     const s = Math.sin(n * 0.001 + 12.345) * 43758.5453;
     return s - Math.floor(s);
   }
 
-  // Input
+  // --- INPUT ---
   function onPress(e) {
     if (e.type === "keydown") {
       if (e.code !== "Space") return;
@@ -607,4 +602,3 @@
 </script>
 </body>
 </html>
-
